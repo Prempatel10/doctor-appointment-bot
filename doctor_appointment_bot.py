@@ -74,10 +74,20 @@ class GoogleSheetsStorage:
     """Manages appointment data storage in Google Sheets."""
 
     def __init__(self):
-        self.creds_file = os.getenv('GOOGLE_CREDENTIALS_FILE')
         self.sheet_id = os.getenv('GOOGLE_SHEETS_ID')
         self.scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-        self.creds = Credentials.from_service_account_file(self.creds_file, scopes=self.scope)
+        
+        # Try to get credentials from environment variable first (for Railway)
+        google_creds = os.getenv('GOOGLE_CREDENTIALS')
+        if google_creds:
+            import json
+            creds_dict = json.loads(google_creds)
+            self.creds = Credentials.from_service_account_info(creds_dict, scopes=self.scope)
+        else:
+            # Fallback to file (for local development)
+            creds_file = os.getenv('GOOGLE_CREDENTIALS_FILE', 'credentials.json')
+            self.creds = Credentials.from_service_account_file(creds_file, scopes=self.scope)
+            
         self.client = gspread.authorize(self.creds)
         self.sheet = self.client.open_by_key(self.sheet_id)
         self.worksheet = self.get_or_create_worksheet('Appointments')
