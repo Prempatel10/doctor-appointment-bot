@@ -163,7 +163,7 @@ Ou utilisez le menu ci-dessous:
         self.supported_languages = ['en', 'es', 'fr', 'hi']
         self.default_language = 'en'
     
-    def get_text(self, key: str, language: str = 'en', **format_args) -> str:
+    def get_text(self, key: str, language: str = 'en', *format_args, **format_kwargs) -> str:
         """Get translated text for a given key and language."""
         if language not in self.supported_languages:
             language = self.default_language
@@ -171,8 +171,16 @@ Ou utilisez le menu ci-dessous:
         text = self.translations.get(language, {}).get(key, 
                self.translations[self.default_language].get(key, f"Missing translation: {key}"))
         
-        if format_args:
-            return text.format(**format_args)
+        # Handle both positional and keyword arguments for formatting
+        if format_args or format_kwargs:
+            try:
+                if format_args:
+                    return text.format(*format_args, **format_kwargs)
+                else:
+                    return text.format(**format_kwargs)
+            except (KeyError, IndexError, ValueError) as e:
+                # If formatting fails, return the unformatted text
+                return text
         return text
     
     def get_language_menu(self) -> list:
@@ -196,23 +204,42 @@ Ou utilisez le menu ci-dessous:
     
     def save_user_language(self, user_id: int, language: str):
         """Save user's preferred language to a file."""
-        user_languages = {}
-        if os.path.exists('user_languages.json'):
-            with open('user_languages.json', 'r') as f:
-                user_languages = json.load(f)
-        
-        user_languages[str(user_id)] = language
-        
-        with open('user_languages.json', 'w') as f:
-            json.dump(user_languages, f)
+        try:
+            user_languages = {}
+            if os.path.exists('user_languages.json'):
+                with open('user_languages.json', 'r', encoding='utf-8') as f:
+                    user_languages = json.load(f)
+            
+            user_languages[str(user_id)] = language
+            
+            with open('user_languages.json', 'w', encoding='utf-8') as f:
+                json.dump(user_languages, f, ensure_ascii=False, indent=2)
+            
+            return True
+        except Exception as e:
+            print(f"Error saving user language: {e}")
+            return False
     
     def get_user_language(self, user_id: int) -> str:
         """Get user's preferred language."""
-        if os.path.exists('user_languages.json'):
-            with open('user_languages.json', 'r') as f:
-                user_languages = json.load(f)
-                return user_languages.get(str(user_id), self.default_language)
+        try:
+            if os.path.exists('user_languages.json'):
+                with open('user_languages.json', 'r', encoding='utf-8') as f:
+                    user_languages = json.load(f)
+                    return user_languages.get(str(user_id), self.default_language)
+        except Exception as e:
+            print(f"Error getting user language: {e}")
         return self.default_language
+    
+    def set_user_language_from_selection(self, selection: str) -> str:
+        """Convert language selection to language code."""
+        language_map = {
+            '🇺🇸 English': 'en',
+            '🇪🇸 Español': 'es', 
+            '🇫🇷 Français': 'fr',
+            '🇮🇳 हिंदी': 'hi'
+        }
+        return language_map.get(selection, 'en')
 
 
 if __name__ == "__main__":

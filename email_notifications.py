@@ -5,40 +5,97 @@ from email.message import EmailMessage
 import os
 from dotenv import load_dotenv
 from datetime import datetime
+import logging
+import re
 
 # Load environment variables
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
+def validate_email(email):
+    """Validate email address format."""
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
 
 def send_email_notification(to_email, subject, body, html_body=None):
-    """Send an email notification with optional HTML content."""
-    EMAIL_ADDRESS = os.getenv('EMAIL_USER')
-    EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD')
-    
-    if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
-        print("❌ Email credentials not found in environment variables!")
-        return False
-
-    msg = EmailMessage()
-    msg.set_content(body)
-    
-    # Add HTML content if provided
-    if html_body:
-        msg.add_alternative(html_body, subtype='html')
-    
-    msg['Subject'] = subject
-    msg['From'] = f"Doctor Appointment System <{EMAIL_ADDRESS}>"
-    msg['To'] = to_email
-
+    """Send an email notification with optional HTML content and improved error handling."""
     try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-            smtp.send_message(msg)
-        print(f"✅ Email sent successfully to {to_email}")
+        # Validate email address
+        if not validate_email(to_email):
+            logger.error(f"Invalid email address: {to_email}")
+            return False
+        
+        EMAIL_ADDRESS = os.getenv('EMAIL_USER')
+        EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD')
+        
+        if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
+            logger.error("Email credentials not found in environment variables!")
+            return False
+        
+        # Validate sender email
+        if not validate_email(EMAIL_ADDRESS):
+            logger.error(f"Invalid sender email address: {EMAIL_ADDRESS}")
+            return False
+
+        msg = EmailMessage()
+        msg.set_content(body)
+        
+        # Add HTML content if provided
+        if html_body:
+            msg.add_alternative(html_body, subtype='html')
+        
+        msg['Subject'] = subject
+        msg['From'] = f"Doctor Appointment System <{EMAIL_ADDRESS}>"
+        msg['To'] = to_email
+        msg['Reply-To'] = EMAIL_ADDRESS
+        
+        # Determine SMTP settings based on email provider
+        smtp_settings = get_smtp_settings(EMAIL_ADDRESS)
+        
+        # Try different SMTP approaches
+        try:
+            # First try SMTP_SSL
+            with smtplib.SMTP_SSL(smtp_settings['host'], smtp_settings['port']) as smtp:
+                smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+                smtp.send_message(msg)
+        except Exception as ssl_error:
+            logger.warning(f"SMTP_SSL failed: {ssl_error}, trying SMTP with STARTTLS")
+            # Fallback to SMTP with STARTTLS
+            with smtplib.SMTP(smtp_settings['host'], smtp_settings['starttls_port']) as smtp:
+                smtp.starttls()
+                smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+                smtp.send_message(msg)
+        
+        logger.info(f"Email sent successfully to {to_email}")
         return True
-    except Exception as e:
-        print(f"❌ Failed to send email to {to_email}: {e}")
+        
+    except smtplib.SMTPAuthenticationError as e:
+        logger.error(f"SMTP Authentication failed: {e}")
         return False
+    except smtplib.SMTPRecipientsRefused as e:
+        logger.error(f"Recipients refused: {e}")
+        return False
+    except smtplib.SMTPException as e:
+        logger.error(f"SMTP error occurred: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Failed to send email to {to_email}: {e}")
+        return False
+
+def get_smtp_settings(email_address):
+    """Get SMTP settings based on email provider."""
+    domain = email_address.split('@')[1].lower()
+    
+    if 'gmail' in domain:
+        return {'host': 'smtp.gmail.com', 'port': 465, 'starttls_port': 587}
+    elif 'outlook' in domain or 'hotmail' in domain or 'live' in domain:
+        return {'host': 'smtp-mail.outlook.com', 'port': 465, 'starttls_port': 587}
+    elif 'yahoo' in domain:
+        return {'host': 'smtp.mail.yahoo.com', 'port': 465, 'starttls_port': 587}
+    else:
+        # Default to Gmail settings
+        return {'host': 'smtp.gmail.com', 'port': 465, 'starttls_port': 587}
 
 
 def send_appointment_confirmation(appointment_data):

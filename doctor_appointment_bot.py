@@ -156,15 +156,22 @@ class GoogleSheetsStorage:
         calendar_event_id = ""
         calendar_status = "Not Created"
         try:
+            # Construct proper datetime string for calendar event
+            start_datetime_str = f"{appointment_data['preferred_date']}T{appointment_data['preferred_time']}:00"
+            
             event_result = create_calendar_event(
                 title=f"Appointment with {appointment_data['doctor_name']}",
-                description=f"Patient: {appointment_data['patient_name']}\nReason: {appointment_data['chief_complaint']}",
-                start_datetime=f"{appointment_data['preferred_date']}T{appointment_data['preferred_time']}:00",
-                attendees=[appointment_data['patient_email']]
+                description=f"Patient: {appointment_data['patient_name']}\nReason: {appointment_data['chief_complaint']}\nPhone: {appointment_data.get('patient_phone', 'N/A')}",
+                start_datetime=start_datetime_str,
+                attendees=[appointment_data['patient_email']] if appointment_data.get('patient_email') else [],
+                duration_minutes=30
             )
-            if event_result:
+            if event_result and event_result.get('id'):
                 calendar_event_id = event_result.get('id', '')
-                calendar_status = "Created"
+                calendar_status = "Created Successfully"
+                logger.info(f"Calendar event created: {calendar_event_id}")
+            else:
+                calendar_status = "Failed to Create"
         except Exception as e:
             logger.error(f"Error creating calendar event: {e}")
             calendar_status = f"Error: {str(e)[:50]}"
