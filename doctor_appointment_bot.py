@@ -20,8 +20,17 @@ from dotenv import load_dotenv
 import gspread
 from google.oauth2.service_account import Credentials
 
+# Import new feature modules
+from google_calendar_integration import create_calendar_event
+from email_notifications import send_email_notification, send_appointment_confirmation
+from analytics_dashboard import AnalyticsDashboard
+from multi_language_support import MultiLanguageSupport
+
 # Load environment variables
 load_dotenv()
+
+# Import secure configuration loader
+from secure_loader import get_secure_config
 
 # Enable logging
 logging.basicConfig(
@@ -32,10 +41,10 @@ logger = logging.getLogger(__name__)
 
 # Conversation states
 (
-    MAIN_MENU, DOCTOR_SELECTION, PATIENT_NAME, PATIENT_AGE, 
+    MAIN_MENU, DOCTOR_SELECTION, PATIENT_NAME, PATIENT_AGE, PATIENT_SPECIFIC_AGE,
     PATIENT_GENDER, PATIENT_PHONE, PATIENT_EMAIL, CHIEF_COMPLAINT,
     PREFERRED_DATE, PREFERRED_TIME, ADDITIONAL_NOTES, CONFIRM_BOOKING
-) = range(12)
+) = range(13)
 
 # Available doctors data
 DOCTORS = {
@@ -104,17 +113,18 @@ class GoogleSheetsStorage:
         headers = [
             'Timestamp', 'Appointment ID', 'Status', 'Doctor ID', 'Doctor Name', 'Specialization', 'Consultation Fee',
             'Patient Name', 'Age', 'Gender', 'Number', 'Email-ID',
-            'Chief Complaint', 'Preferred Date', 'Preferred Time', 'Additional Notes'
+            'Chief Complaint', 'Preferred Date', 'Preferred Time', 'Additional Notes',
+            'Email Sent', 'Email Status', 'Calendar Event ID', 'Calendar Status', 'User Language'
         ]
         worksheet.append_row(headers)
         # Format header row with bold text and background color
-        worksheet.format('A1:P1', {
+        worksheet.format('A1:U1', {
             'textFormat': {'bold': True, 'fontSize': 11},
             'backgroundColor': {'red': 0.9, 'green': 0.9, 'blue': 0.9}
         })
         # Set column widths for better readability
         worksheet.batch_update([{
-            'range': 'A:P',
+            'range': 'A:U',
             'majorDimension': 'COLUMNS',
             'values': [[]]
         }])
@@ -132,6 +142,36 @@ class GoogleSheetsStorage:
         # Column mapping matches headers: Timestamp, Appointment ID, Status, Doctor ID, Doctor Name, Specialization, Consultation Fee,
         # Patient Name, Age, Gender, Number, Email-ID, Chief Complaint, Preferred Date, Preferred Time, Additional Notes,
         # Telegram User ID, Telegram Username, First Name, Last Name, Language Code, Is Bot, Is Premium
+        # Try to send email confirmation
+        email_sent = False
+        email_status = "Not Sent"
+        try:
+            email_sent = send_appointment_confirmation(appointment_data)
+            email_status = "Sent" if email_sent else "Failed"
+        except Exception as e:
+            logger.error(f"Error sending email confirmation: {e}")
+            email_status = f"Error: {str(e)[:50]}"
+        
+        # Try to create calendar event
+        calendar_event_id = ""
+        calendar_status = "Not Created"
+        try:
+            event_result = create_calendar_event(
+                title=f"Appointment with {appointment_data['doctor_name']}",
+                description=f"Patient: {appointment_data['patient_name']}\nReason: {appointment_data['chief_complaint']}",
+                start_datetime=f"{appointment_data['preferred_date']}T{appointment_data['preferred_time']}:00",
+                attendees=[appointment_data['patient_email']]
+            )
+            if event_result:
+                calendar_event_id = event_result.get('id', '')
+                calendar_status = "Created"
+        except Exception as e:
+            logger.error(f"Error creating calendar event: {e}")
+            calendar_status = f"Error: {str(e)[:50]}"
+        
+        # Get user language
+        user_language = appointment_data.get('user_info', {}).get('language_code', 'en')
+        
         row = [
             appointment_data['timestamp'],                    # Column A: Timestamp
             appointment_data['appointment_id'],               # Column B: Appointment ID
@@ -140,15 +180,20 @@ class GoogleSheetsStorage:
             appointment_data['doctor_name'],                  # Column E: Doctor Name
             appointment_data['doctor_specialization'],       # Column F: Specialization
             appointment_data['doctor_fees'],                  # Column G: Consultation Fee
-            appointment_data['patient_name'],                 # Column H: Patient Name (User's full name)
-            appointment_data['patient_age'],                  # Column I: Age (User's age group)
-            appointment_data['patient_gender'],               # Column J: Gender (User's gender)
-            appointment_data['patient_phone'],                # Column K: Number (User's phone number)
-            appointment_data['patient_email'],                # Column L: Email-ID (User's email address)
+            appointment_data['patient_name'],                 # Column H: Patient Name
+            appointment_data['patient_age'],                  # Column I: Age
+            appointment_data['patient_gender'],               # Column J: Gender
+            appointment_data['patient_phone'],                # Column K: Number
+            appointment_data['patient_email'],                # Column L: Email-ID
             appointment_data['chief_complaint'],              # Column M: Chief Complaint
             appointment_data['preferred_date'],               # Column N: Preferred Date
             appointment_data['preferred_time'],               # Column O: Preferred Time
-            appointment_data['additional_notes']             # Column P: Additional Notes
+            appointment_data['additional_notes'],             # Column P: Additional Notes
+            "Yes" if email_sent else "No",                   # Column Q: Email Sent
+            email_status,                                     # Column R: Email Status
+            calendar_event_id,                                # Column S: Calendar Event ID
+            calendar_status,                                  # Column T: Calendar Status
+            user_language                                     # Column U: User Language
         ]
         
         try:
@@ -159,8 +204,10 @@ class GoogleSheetsStorage:
             logger.error(f"Error saving to Google Sheets: {e}")
             return None
 
-# Global storage instance - will be initialized in main()
+# Global storage instances - will be initialized in main()
 appointment_storage = None
+analytics_dashboard = None
+multilang_support = None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Start the conversation and show main menu."""
@@ -324,19 +371,22 @@ async def patient_name_received(update: Update, context: ContextTypes.DEFAULT_TY
     
     context.user_data['patient_name'] = text
     
-    keyboard = [
-        ['18-25', '26-35', '36-45', '46-60', '60+'],
-        ['🔙 Back']
-    ]
+    # Create individual age options from 1 to 100
+    keyboard = []
+    
+    # Common age ranges for easier selection
+    keyboard.append(['1-10', '11-17', '18-25', '26-35', '36-45'])
+    keyboard.append(['46-55', '56-65', '66-75', '76-85', '86+'])
+    keyboard.append(['🔢 Enter Specific Age', '🔙 Back'])
+    
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     
     await update.message.reply_text(
-        f"✅ Name recorded: **{text}**\n\n👤 **Please select your age group:**",
+        f"✅ Name recorded: **{text}**\n\n👤 **Please select your age range or enter specific age:**",
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
     return PATIENT_AGE
-
 async def patient_age_received(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle patient age input."""
     text = update.message.text
@@ -344,6 +394,10 @@ async def patient_age_received(update: Update, context: ContextTypes.DEFAULT_TYP
     if text == '🔙 Back':
         await update.message.reply_text("👤 **Please enter your full name:**")
         return PATIENT_NAME
+
+    if text == '🔢 Enter Specific Age':
+        await update.message.reply_text("🔢 **Enter your specific age (1-100):**")
+        return PATIENT_SPECIFIC_AGE
     
     context.user_data['patient_age'] = text
     
@@ -358,6 +412,29 @@ async def patient_age_received(update: Update, context: ContextTypes.DEFAULT_TYP
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
+    return PATIENT_GENDER
+
+async def patient_specific_age_received(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle specific age input."""
+    text = update.message.text
+
+    if text.isdigit() and 1 <= int(text) <= 100:
+        context.user_data['patient_age'] = text
+        keyboard = [
+            ['👨 Male', '👩 Female', '🏳️‍⚧️ Other'],
+            ['🔙 Back']
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        
+        await update.message.reply_text(
+            f"✅ Specific age recorded: **{text}**\n\n⚧ **Please select your gender:**",
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+        return PATIENT_GENDER
+    else:
+        await update.message.reply_text("❌ Invalid age. Please enter a valid age (1-100).")
+        return PATIENT_SPECIFIC_AGE
     return PATIENT_GENDER
 
 async def patient_gender_received(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -787,49 +864,103 @@ async def book_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     """Book appointment command."""
     return await book_appointment(update, context)
 
+async def analytics_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show analytics for appointments."""
+    try:
+        stats = analytics_dashboard.generate_daily_stats()
+        
+        analytics_text = f"""
+📊 **Appointment Analytics Dashboard**
+
+📈 **Summary Statistics:**
+• Total Appointments: {stats.get('total_appointments', 0)}
+• Last Updated: {stats.get('last_updated', 'N/A')}
+
+👨‍⚕️ **Popular Doctors:**
+"""
+        
+        for doctor, count in list(stats.get('popular_doctors', {}).items())[:3]:
+            analytics_text += f"• {doctor}: {count} appointments\n"
+        
+        analytics_text += "\n🏥 **Popular Specialties:**\n"
+        for specialty, count in list(stats.get('popular_specialties', {}).items())[:3]:
+            analytics_text += f"• {specialty}: {count} appointments\n"
+        
+        analytics_text += "\n🕐 **Popular Time Slots:**\n"
+        for time, count in list(stats.get('popular_times', {}).items())[:3]:
+            analytics_text += f"• {time}: {count} appointments\n"
+        
+        await update.message.reply_text(analytics_text, parse_mode='Markdown')
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error generating analytics: {str(e)}")
+
+async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Change language settings."""
+    user_id = update.effective_user.id
+    
+    language_text = """
+🌍 **Language Selection**
+
+Please select your preferred language:
+"""
+    
+    keyboard = multilang_support.get_language_menu()
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    
+    await update.message.reply_text(language_text, reply_markup=reply_markup, parse_mode='Markdown')
+
 def main() -> None:
     """Run the bot."""
-    # Get bot token
-    bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
-    if not bot_token:
-        print("❌ Error: TELEGRAM_BOT_TOKEN not found in environment variables!")
-        print("Please check your .env file.")
-        return
-    
-    # Check Google Sheets credentials
-    google_creds = os.getenv('GOOGLE_CREDENTIALS')
-    creds_file = os.getenv('GOOGLE_CREDENTIALS_FILE')
-    sheet_id = os.getenv('GOOGLE_SHEETS_ID')
-    
-    if not sheet_id:
-        print("❌ Error: GOOGLE_SHEETS_ID not found in environment variables!")
-        print("Please check GOOGLE_SHEETS_ID in your environment variables.")
-        return
-    
-    # Check if we have either environment variable or file credentials
-    if not google_creds and not creds_file:
-        print("❌ Error: Google Sheets credentials missing!")
-        print("Please set either GOOGLE_CREDENTIALS environment variable or GOOGLE_CREDENTIALS_FILE.")
-        return
-    
-    # If using file credentials, check if file exists
-    if not google_creds and creds_file and not os.path.exists(creds_file):
-        print(f"❌ Error: Credentials file '{creds_file}' not found!")
-        print("Please make sure your credentials.json file is in the correct location.")
-        return
-    
-    print("🏥 Starting Doctor Appointment Bot with Google Sheets Integration...")
+    print("🏥 Starting Doctor Appointment Bot with Secure Configuration...")
     print("=" * 60)
-    print("✅ Bot token loaded")
-    print("✅ Google Sheets credentials found")
+    
+    # Load secure configuration
+    try:
+        secure_config = get_secure_config()
+        config = secure_config.get_config()
+        
+        # Validate required configuration
+        bot_token = config.get('TELEGRAM_BOT_TOKEN')
+        sheet_id = config.get('GOOGLE_SHEETS_ID')
+        
+        if not bot_token:
+            print("❌ Error: TELEGRAM_BOT_TOKEN not found in configuration!")
+            return
+        
+        if not sheet_id:
+            print("❌ Error: GOOGLE_SHEETS_ID not found in configuration!")
+            return
+            
+        # Set environment variables for other modules
+        os.environ['TELEGRAM_BOT_TOKEN'] = bot_token
+        os.environ['GOOGLE_SHEETS_ID'] = sheet_id
+        if config.get('GOOGLE_CREDENTIALS'):
+            os.environ['GOOGLE_CREDENTIALS'] = config.get('GOOGLE_CREDENTIALS')
+        if config.get('EMAIL_USER'):
+            os.environ['EMAIL_USER'] = config.get('EMAIL_USER')
+        if config.get('EMAIL_PASSWORD'):
+            os.environ['EMAIL_PASSWORD'] = config.get('EMAIL_PASSWORD')
+            
+        print("✅ Secure configuration loaded successfully")
+        print("✅ Bot token and credentials validated")
+        
+    except Exception as e:
+        print(f"❌ Error loading secure configuration: {e}")
+        print("Please ensure encrypted configuration files exist or environment variables are set.")
+        return
     
     # Initialize Google Sheets storage
-    global appointment_storage
+    global appointment_storage, analytics_dashboard, multilang_support
     try:
         appointment_storage = GoogleSheetsStorage()
+        analytics_dashboard = AnalyticsDashboard()
+        multilang_support = MultiLanguageSupport()
         print("✅ Google Sheets connection established")
+        print("✅ Analytics dashboard initialized")
+        print("✅ Multi-language support enabled")
     except Exception as e:
-        print(f"❌ Error initializing Google Sheets: {e}")
+        print(f"❌ Error initializing services: {e}")
         print("Please check your credentials and sheet permissions.")
         return
     
@@ -861,6 +992,9 @@ def main() -> None:
             ],
             PATIENT_AGE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, patient_age_received)
+            ],
+            PATIENT_SPECIFIC_AGE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, patient_specific_age_received)
             ],
             PATIENT_GENDER: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, patient_gender_received)

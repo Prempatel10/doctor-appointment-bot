@@ -76,3 +76,4 @@ logs/
 # Backup files
 *.bak
 *.backup
+.sensitive_backup/
