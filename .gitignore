@@ -3,6 +3,7 @@
 
 # Google Credentials
 credentials.json
+GOOGLE_CREDENTIALS.json
 
 # Python
 __pycache__/

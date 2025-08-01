@@ -797,15 +797,23 @@ def main() -> None:
         return
     
     # Check Google Sheets credentials
+    google_creds = os.getenv('GOOGLE_CREDENTIALS')
     creds_file = os.getenv('GOOGLE_CREDENTIALS_FILE')
     sheet_id = os.getenv('GOOGLE_SHEETS_ID')
     
-    if not creds_file or not sheet_id:
-        print("❌ Error: Google Sheets configuration missing!")
-        print("Please check GOOGLE_CREDENTIALS_FILE and GOOGLE_SHEETS_ID in your .env file.")
+    if not sheet_id:
+        print("❌ Error: GOOGLE_SHEETS_ID not found in environment variables!")
+        print("Please check GOOGLE_SHEETS_ID in your environment variables.")
         return
     
-    if not os.path.exists(creds_file):
+    # Check if we have either environment variable or file credentials
+    if not google_creds and not creds_file:
+        print("❌ Error: Google Sheets credentials missing!")
+        print("Please set either GOOGLE_CREDENTIALS environment variable or GOOGLE_CREDENTIALS_FILE.")
+        return
+    
+    # If using file credentials, check if file exists
+    if not google_creds and creds_file and not os.path.exists(creds_file):
         print(f"❌ Error: Credentials file '{creds_file}' not found!")
         print("Please make sure your credentials.json file is in the correct location.")
         return
