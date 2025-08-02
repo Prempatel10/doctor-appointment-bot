@@ -175,7 +175,7 @@ class GoogleSheetsStorage:
 appointment_storage = None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Start the conversation and show main menu with automatic help."""
+    """Start the conversation and show main menu."""
     user = update.effective_user
     
     welcome_message = f"""
@@ -188,7 +188,7 @@ Available Services:
 • View available doctors
 • Quick and easy scheduling
 
-Click /book to start booking an appointment!
+Click ❓ Help for instructions on how to use this bot!
 Or use the menu below:
 """
     
@@ -201,32 +201,29 @@ Or use the menu below:
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=False, resize_keyboard=True)
     
     await update.message.reply_text(welcome_message, reply_markup=reply_markup, parse_mode='Markdown')
-    
-    # Automatically show help information for new users
-    help_text = """
-🆘 **Help & Instructions**
-
-**How to book an appointment:**
-1. Click '📅 Book Appointment'
-2. Select your preferred doctor
-3. Fill in your details
-4. Choose date and time
-5. Confirm your booking
-
-**Available Commands:**
-• /start - Start over
-• /book - Book appointment
-• /doctors - View doctors
-• /help - Show this help
-
-Need assistance? Contact us at support@clinic.com
-"""
-    
-    await update.message.reply_text(help_text, parse_mode='Markdown')
     return MAIN_MENU
+
+async def return_to_main_menu_silently(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Return to main menu without displaying any message."""
+    keyboard = [
+        ['📅 Book Appointment', '👨‍⚕️ View Doctors'],
+        ['🏥 About Clinic', '🚨 Emergency'],
+        ['❓ Help', '📞 Contact'],
+        ['💳 Services & Pricing', '🗺️ Location']
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=False, resize_keyboard=True)
+    
+    # Just update the keyboard without sending a message
+    await update.message.reply_text("🏠 Main Menu", reply_markup=reply_markup)
+    return MAIN_MENU
+
 async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle main menu selections."""
     text = update.message.text
+    
+    # Handle back to main menu silently
+    if text in ['🏠 Main Menu', '🔙 Back to Main Menu']:
+        return await return_to_main_menu_silently(update, context)
     
     handlers = {
         '📅 Book Appointment': book_appointment,
@@ -399,7 +396,7 @@ async def doctor_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     text = update.message.text
     
     if text == '🔙 Back to Main Menu':
-        return await start(update, context)
+        return MAIN_MENU
     
     # Extract doctor ID from the selection
     doctor_id = text.split('.')[0].strip()
