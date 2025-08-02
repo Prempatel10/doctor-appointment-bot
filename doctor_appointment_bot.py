@@ -20,11 +20,11 @@ from dotenv import load_dotenv
 import gspread
 from google.oauth2.service_account import Credentials
 
-# Import new feature modules
-from google_calendar_integration import create_calendar_event
-from email_notifications import send_email_notification, send_appointment_confirmation
-from analytics_dashboard import AnalyticsDashboard
-from multi_language_support import MultiLanguageSupport
+# Import optional feature modules (removed for simplicity)
+# from google_calendar_integration import create_calendar_event
+# from email_notifications import send_email_notification, send_appointment_confirmation
+# from analytics_dashboard import AnalyticsDashboard
+# from multi_language_support import MultiLanguageSupport
 
 # Load environment variables
 load_dotenv()
@@ -113,18 +113,17 @@ class GoogleSheetsStorage:
         headers = [
             'Timestamp', 'Appointment ID', 'Status', 'Doctor ID', 'Doctor Name', 'Specialization', 'Consultation Fee',
             'Patient Name', 'Age', 'Gender', 'Number', 'Email-ID',
-            'Chief Complaint', 'Preferred Date', 'Preferred Time', 'Additional Notes',
-            'Email Sent', 'Email Status', 'Calendar Event ID', 'Calendar Status', 'User Language'
+            'Chief Complaint', 'Preferred Date', 'Preferred Time', 'Additional Notes'
         ]
         worksheet.append_row(headers)
         # Format header row with bold text and background color
-        worksheet.format('A1:U1', {
+        worksheet.format('A1:P1', {
             'textFormat': {'bold': True, 'fontSize': 11},
             'backgroundColor': {'red': 0.9, 'green': 0.9, 'blue': 0.9}
         })
         # Set column widths for better readability
         worksheet.batch_update([{
-            'range': 'A:U',
+            'range': 'A:P',
             'majorDimension': 'COLUMNS',
             'values': [[]]
         }])
@@ -142,42 +141,7 @@ class GoogleSheetsStorage:
         # Column mapping matches headers: Timestamp, Appointment ID, Status, Doctor ID, Doctor Name, Specialization, Consultation Fee,
         # Patient Name, Age, Gender, Number, Email-ID, Chief Complaint, Preferred Date, Preferred Time, Additional Notes,
         # Telegram User ID, Telegram Username, First Name, Last Name, Language Code, Is Bot, Is Premium
-        # Try to send email confirmation
-        email_sent = False
-        email_status = "Not Sent"
-        try:
-            email_sent = send_appointment_confirmation(appointment_data)
-            email_status = "Sent" if email_sent else "Failed"
-        except Exception as e:
-            logger.error(f"Error sending email confirmation: {e}")
-            email_status = f"Error: {str(e)[:50]}"
-        
-        # Try to create calendar event
-        calendar_event_id = ""
-        calendar_status = "Not Created"
-        try:
-            # Construct proper datetime string for calendar event
-            start_datetime_str = f"{appointment_data['preferred_date']}T{appointment_data['preferred_time']}:00"
-            
-            event_result = create_calendar_event(
-                title=f"Appointment with {appointment_data['doctor_name']}",
-                description=f"Patient: {appointment_data['patient_name']}\nReason: {appointment_data['chief_complaint']}\nPhone: {appointment_data.get('patient_phone', 'N/A')}",
-                start_datetime=start_datetime_str,
-                attendees=[appointment_data['patient_email']] if appointment_data.get('patient_email') else [],
-                duration_minutes=30
-            )
-            if event_result and event_result.get('id'):
-                calendar_event_id = event_result.get('id', '')
-                calendar_status = "Created Successfully"
-                logger.info(f"Calendar event created: {calendar_event_id}")
-            else:
-                calendar_status = "Failed to Create"
-        except Exception as e:
-            logger.error(f"Error creating calendar event: {e}")
-            calendar_status = f"Error: {str(e)[:50]}"
-        
-        # Get user language
-        user_language = appointment_data.get('user_info', {}).get('language_code', 'en')
+        # Simplified appointment processing without external integrations
         
         row = [
             appointment_data['timestamp'],                    # Column A: Timestamp
@@ -196,11 +160,6 @@ class GoogleSheetsStorage:
             appointment_data['preferred_date'],               # Column N: Preferred Date
             appointment_data['preferred_time'],               # Column O: Preferred Time
             appointment_data['additional_notes'],             # Column P: Additional Notes
-            "Yes" if email_sent else "No",                   # Column Q: Email Sent
-            email_status,                                     # Column R: Email Status
-            calendar_event_id,                                # Column S: Calendar Event ID
-            calendar_status,                                  # Column T: Calendar Status
-            user_language                                     # Column U: User Language
         ]
         
         try:
@@ -211,10 +170,8 @@ class GoogleSheetsStorage:
             logger.error(f"Error saving to Google Sheets: {e}")
             return None
 
-# Global storage instances - will be initialized in main()
+# Global storage instance - will be initialized in main()
 appointment_storage = None
-analytics_dashboard = None
-multilang_support = None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Start the conversation and show main menu."""
@@ -871,51 +828,6 @@ async def book_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     """Book appointment command."""
     return await book_appointment(update, context)
 
-async def analytics_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show analytics for appointments."""
-    try:
-        stats = analytics_dashboard.generate_daily_stats()
-        
-        analytics_text = f"""
-📊 **Appointment Analytics Dashboard**
-
-📈 **Summary Statistics:**
-• Total Appointments: {stats.get('total_appointments', 0)}
-• Last Updated: {stats.get('last_updated', 'N/A')}
-
-👨‍⚕️ **Popular Doctors:**
-"""
-        
-        for doctor, count in list(stats.get('popular_doctors', {}).items())[:3]:
-            analytics_text += f"• {doctor}: {count} appointments\n"
-        
-        analytics_text += "\n🏥 **Popular Specialties:**\n"
-        for specialty, count in list(stats.get('popular_specialties', {}).items())[:3]:
-            analytics_text += f"• {specialty}: {count} appointments\n"
-        
-        analytics_text += "\n🕐 **Popular Time Slots:**\n"
-        for time, count in list(stats.get('popular_times', {}).items())[:3]:
-            analytics_text += f"• {time}: {count} appointments\n"
-        
-        await update.message.reply_text(analytics_text, parse_mode='Markdown')
-        
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error generating analytics: {str(e)}")
-
-async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Change language settings."""
-    user_id = update.effective_user.id
-    
-    language_text = """
-🌍 **Language Selection**
-
-Please select your preferred language:
-"""
-    
-    keyboard = multilang_support.get_language_menu()
-    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    
-    await update.message.reply_text(language_text, reply_markup=reply_markup, parse_mode='Markdown')
 
 def main() -> None:
     """Run the bot."""
@@ -958,16 +870,12 @@ def main() -> None:
         return
     
     # Initialize Google Sheets storage
-    global appointment_storage, analytics_dashboard, multilang_support
+    global appointment_storage
     try:
         appointment_storage = GoogleSheetsStorage()
-        analytics_dashboard = AnalyticsDashboard()
-        multilang_support = MultiLanguageSupport()
         print("✅ Google Sheets connection established")
-        print("✅ Analytics dashboard initialized")
-        print("✅ Multi-language support enabled")
     except Exception as e:
-        print(f"❌ Error initializing services: {e}")
+        print(f"❌ Error initializing Google Sheets storage: {e}")
         print("Please check your credentials and sheet permissions.")
         return
     
