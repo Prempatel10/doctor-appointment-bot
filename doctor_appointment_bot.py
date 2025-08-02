@@ -202,7 +202,7 @@ Or use the menu below:
     
     await update.message.reply_text(welcome_message, reply_markup=reply_markup, parse_mode='Markdown')
     return MAIN_MENU
-async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -e int:
+async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle main menu selections."""
     text = update.message.text
     
@@ -223,7 +223,7 @@ async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text("Please use the menu buttons or type /start to begin.")
         return MAIN_MENU
 
-async def about_clinic(update: Update, context: ContextTypes.DEFAULT_TYPE) -e int:
+async def about_clinic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Show information about the clinic."""
     about_text = """
 🏥 **About Our Clinic**
@@ -239,7 +239,7 @@ We look forward to serving you and helping you maintain a healthy life.
     await update.message.reply_text(about_text, parse_mode='Markdown')
     return MAIN_MENU
 
-async def emergency_contact(update: Update, context: ContextTypes.DEFAULT_TYPE) -e int:
+async def emergency_contact(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Show emergency contact information."""
     emergency_text = """
 🚨 **Emergency Contact Information**
@@ -255,7 +255,7 @@ Stay safe and take care!
     await update.message.reply_text(emergency_text, parse_mode='Markdown')
     return MAIN_MENU
 
-async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -e int:
+async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Display help instructions."""
     help_text = """
 🆘 **Help & Instructions**
@@ -278,7 +278,7 @@ Need assistance? Contact us at support@clinic.com
     await update.message.reply_text(help_text, parse_mode='Markdown')
     return MAIN_MENU
 
-async def show_contact(update: Update, context: ContextTypes.DEFAULT_TYPE) -e int:
+async def show_contact(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Display contact information."""
     contact_text = """
 📞 **Contact Information**
@@ -299,7 +299,7 @@ Sunday: Closed
     await update.message.reply_text(contact_text, parse_mode='Markdown')
     return MAIN_MENU
 
-async def services_pricing(update: Update, context: ContextTypes.DEFAULT_TYPE) -e int:
+async def services_pricing(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Show services and pricing information."""
     services_text = """
 💳 **Services & Pricing**
@@ -315,7 +315,7 @@ please contact our reception desk.
     await update.message.reply_text(services_text, parse_mode='Markdown')
     return MAIN_MENU
 
-async def clinic_location(update: Update, context: ContextTypes.DEFAULT_TYPE) -e int:
+async def clinic_location(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Provide clinic location and map link."""
     location_text = """
 🗺️ **Clinic Location**
