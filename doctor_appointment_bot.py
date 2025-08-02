@@ -43,8 +43,9 @@ logger = logging.getLogger(__name__)
 (
     MAIN_MENU, DOCTOR_SELECTION, PATIENT_NAME, PATIENT_AGE, PATIENT_SPECIFIC_AGE,
     PATIENT_GENDER, PATIENT_PHONE, PATIENT_EMAIL, CHIEF_COMPLAINT,
-    PREFERRED_DATE, PREFERRED_TIME, ADDITIONAL_NOTES, CONFIRM_BOOKING
-) = range(13)
+    PREFERRED_DATE, PREFERRED_TIME, ADDITIONAL_NOTES, CONFIRM_BOOKING,
+    ABOUT_INFO, EMERGENCY_INFO, CLINIC_INFO
+) = range(16)
 
 # Available doctors data
 DOCTORS = {
@@ -193,23 +194,70 @@ Or use the menu below:
     
     keyboard = [
         ['📅 Book Appointment', '👨‍⚕️ View Doctors'],
-        ['❓ Help', '📞 Contact']
+        ['🏥 About Clinic', '🚨 Emergency'],
+        ['❓ Help', '📞 Contact'],
+        ['💳 Services & Pricing', '🗺️ Location']
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=False, resize_keyboard=True)
     
     await update.message.reply_text(welcome_message, reply_markup=reply_markup, parse_mode='Markdown')
     return MAIN_MENU
-
-async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -e int:
     """Handle main menu selections."""
     text = update.message.text
     
-    if text == '📅 Book Appointment':
-        return await book_appointment(update, context)
-    elif text == '👨‍⚕️ View Doctors':
-        return await view_doctors(update, context)
-    elif text == '❓ Help':
-        help_text = """
+    handlers = {
+        '📅 Book Appointment': book_appointment,
+        '👨‍⚕️ View Doctors': view_doctors,
+        '🏥 About Clinic': about_clinic,
+        '🚨 Emergency': emergency_contact,
+        '❓ Help': show_help,
+        '📞 Contact': show_contact,
+        '💳 Services & Pricing': services_pricing,
+        '🗺️ Location': clinic_location
+    }
+
+    if text in handlers:
+        return await handlers[text](update, context)
+    else:
+        await update.message.reply_text("Please use the menu buttons or type /start to begin.")
+        return MAIN_MENU
+
+async def about_clinic(update: Update, context: ContextTypes.DEFAULT_TYPE) -e int:
+    """Show information about the clinic."""
+    about_text = """
+🏥 **About Our Clinic**
+
+Welcome to our medical clinic where we prioritize your health and well-being.
+We have a team of expert doctors specializing in various fields to provide
+you with top-notch healthcare services.
+
+Our mission is to offer compassionate and personalized care to each patient.
+We look forward to serving you and helping you maintain a healthy life.
+
+"""
+    await update.message.reply_text(about_text, parse_mode='Markdown')
+    return MAIN_MENU
+
+async def emergency_contact(update: Update, context: ContextTypes.DEFAULT_TYPE) -e int:
+    """Show emergency contact information."""
+    emergency_text = """
+🚨 **Emergency Contact Information**
+
+For medical emergencies, please contact the local emergency services
+immediately or visit the nearest hospital.
+
+**Emergency Hotline:** 911
+
+Stay safe and take care!
+
+"""
+    await update.message.reply_text(emergency_text, parse_mode='Markdown')
+    return MAIN_MENU
+
+async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -e int:
+    """Display help instructions."""
+    help_text = """
 🆘 **Help & Instructions**
 
 **How to book an appointment:**
@@ -227,10 +275,12 @@ async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 Need assistance? Contact us at support@clinic.com
 """
-        await update.message.reply_text(help_text, parse_mode='Markdown')
-        return MAIN_MENU
-    elif text == '📞 Contact':
-        contact_text = """
+    await update.message.reply_text(help_text, parse_mode='Markdown')
+    return MAIN_MENU
+
+async def show_contact(update: Update, context: ContextTypes.DEFAULT_TYPE) -e int:
+    """Display contact information."""
+    contact_text = """
 📞 **Contact Information**
 
 **Clinic Address:**
@@ -246,13 +296,42 @@ Monday - Friday: 9:00 AM - 6:00 PM
 Saturday: 10:00 AM - 4:00 PM
 Sunday: Closed
 """
-        await update.message.reply_text(contact_text, parse_mode='Markdown')
-        return MAIN_MENU
-    else:
-        await update.message.reply_text(
-            "Please use the menu buttons or type /book to start booking an appointment."
-        )
-        return MAIN_MENU
+    await update.message.reply_text(contact_text, parse_mode='Markdown')
+    return MAIN_MENU
+
+async def services_pricing(update: Update, context: ContextTypes.DEFAULT_TYPE) -e int:
+    """Show services and pricing information."""
+    services_text = """
+💳 **Services & Pricing**
+
+We offer a wide range of medical services including General Medicine, Cardiology,
+Dermatology, and Orthopedics. Our pricing is competitive, and we ensure top-notch
+service for all our patients.
+
+For detailed pricing information and to learn more about our services,
+please contact our reception desk.
+
+"""
+    await update.message.reply_text(services_text, parse_mode='Markdown')
+    return MAIN_MENU
+
+async def clinic_location(update: Update, context: ContextTypes.DEFAULT_TYPE) -e int:
+    """Provide clinic location and map link."""
+    location_text = """
+🗺️ **Clinic Location**
+
+Visit us at:
+123 Health Street, Medical District,
+City, State 12345
+
+For directions and more information, please visit our website:
+[www.clinic.com](http://www.clinic.com)
+
+We look forward to welcoming you to our clinic!
+
+"""
+    await update.message.reply_text(location_text, parse_mode='Markdown')
+    return MAIN_MENU
 
 async def book_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Start the appointment booking process."""
