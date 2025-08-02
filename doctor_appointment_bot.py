@@ -175,7 +175,7 @@ class GoogleSheetsStorage:
 appointment_storage = None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Start the conversation and show main menu."""
+    """Start the conversation and show main menu with automatic help."""
     user = update.effective_user
     
     welcome_message = f"""
@@ -201,6 +201,28 @@ Or use the menu below:
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=False, resize_keyboard=True)
     
     await update.message.reply_text(welcome_message, reply_markup=reply_markup, parse_mode='Markdown')
+    
+    # Automatically show help information for new users
+    help_text = """
+🆘 **Help & Instructions**
+
+**How to book an appointment:**
+1. Click '📅 Book Appointment'
+2. Select your preferred doctor
+3. Fill in your details
+4. Choose date and time
+5. Confirm your booking
+
+**Available Commands:**
+• /start - Start over
+• /book - Book appointment
+• /doctors - View doctors
+• /help - Show this help
+
+Need assistance? Contact us at support@clinic.com
+"""
+    
+    await update.message.reply_text(help_text, parse_mode='Markdown')
     return MAIN_MENU
 async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle main menu selections."""
@@ -220,8 +242,8 @@ async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if text in handlers:
         return await handlers[text](update, context)
     else:
-        await update.message.reply_text("Please use the menu buttons or type /start to begin.")
-        return MAIN_MENU
+        # Automatically show help for unrecognized input
+        return await show_help(update, context)
 
 async def about_clinic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Show information about the clinic."""
